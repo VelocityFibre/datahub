@@ -1,0 +1,10 @@
+# Hostinger VPS Connection Info
+VPS IP: 72.60.17.245
+SSH User: root
+SSH Key: ~/.ssh/hostinger_vps
+
+# Connection Command
+ssh -i ~/.ssh/hostinger_vps root@72.60.17.245
+
+# Public Key (already generated)
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPFfKICiNh4KODhjnYM/aGu8il5EA4Ssdt2VoCNcFl8u hostinger-vps-datahub

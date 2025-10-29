@@ -1,0 +1,72 @@
+{
+  "name": "velocityfibre-datahub",
+  "version": "1.0.0",
+  "description": "Central data hub for VelocityFibre - syncing data from multiple sources to Neon database",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "migrate": "tsx src/scripts/run-migrations-simple.ts",
+    "sync": "tsx src/scripts/sync-all.ts",
+    "sync:lawley": "tsx src/connectors/sharepoint/lawley.connector.ts",
+    "sync:hld-pole": "tsx src/connectors/sharepoint/worksheets/hld-pole-optimized.connector.ts",
+    "sync:hld-home": "tsx src/connectors/sharepoint/worksheets/hld-home.connector.ts",
+    "sync:tracker-pole": "tsx src/connectors/sharepoint/worksheets/tracker-pole.connector.ts",
+    "sync:tracker-home": "tsx src/connectors/sharepoint/worksheets/tracker-home.connector.ts",
+    "sync:nokia-exp": "tsx src/connectors/sharepoint/worksheets/nokia-exp.connector.ts",
+    "sync:1map-ins": "tsx src/connectors/sharepoint/worksheets/onemap-ins.connector.ts",
+    "sync:1map-pole": "tsx src/connectors/sharepoint/worksheets/onemap-pole.connector.ts",
+    "sync:lawley-historical": "tsx src/connectors/sharepoint/worksheets/lawley-qa.connector.ts historical",
+    "sync:lawley-activations": "tsx src/connectors/sharepoint/worksheets/lawley-qa.connector.ts activations",
+    "analyze:worksheets": "tsx src/scripts/analyze-worksheets.ts",
+    "check:tables": "tsx src/scripts/check-existing-tables.ts",
+    "check:status": "tsx src/scripts/check-sync-status.ts",
+    "api": "tsx src/api/server.ts",
+    "test": "jest",
+    "lint": "eslint . --ext .ts",
+    "format": "prettier --write \"src/**/*.ts\""
+  },
+  "keywords": [
+    "datahub",
+    "sharepoint",
+    "neon",
+    "postgresql",
+    "sync",
+    "api"
+  ],
+  "author": "VelocityFibre",
+  "license": "MIT",
+  "dependencies": {
+    "@neondatabase/serverless": "^0.9.0",
+    "@pnp/sp": "^4.0.0",
+    "@pnp/nodejs": "^4.0.0",
+    "dotenv": "^16.4.0",
+    "express": "^4.18.0",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "node-cron": "^3.0.3",
+    "winston": "^3.11.0",
+    "zod": "^3.22.0",
+    "exceljs": "^4.4.0",
+    "axios": "^1.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/express": "^4.17.21",
+    "@types/cors": "^2.8.17",
+    "@types/node-cron": "^3.0.11",
+    "@typescript-eslint/eslint-plugin": "^6.15.0",
+    "@typescript-eslint/parser": "^6.15.0",
+    "eslint": "^8.56.0",
+    "prettier": "^3.1.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0",
+    "jest": "^29.7.0",
+    "@types/jest": "^29.5.11"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
