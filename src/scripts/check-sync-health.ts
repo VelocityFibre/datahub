@@ -28,13 +28,28 @@ async function checkSyncHealth() {
 
     for (const { name, table, expected } of tables) {
       try {
-        const [stats] = await sql`
-          SELECT
-            COUNT(*) as total,
-            MAX(sync_timestamp) as last_sync,
-            MAX(updated_at) as last_update
-          FROM ${sql(table)}
-        `;
+        let stats;
+        if (table === 'sharepoint_hld_pole') {
+          [stats] = await sql`SELECT COUNT(*) as total, MAX(sync_timestamp) as last_sync, MAX(updated_at) as last_update FROM sharepoint_hld_pole`;
+        } else if (table === 'sharepoint_hld_home') {
+          [stats] = await sql`SELECT COUNT(*) as total, MAX(sync_timestamp) as last_sync, MAX(updated_at) as last_update FROM sharepoint_hld_home`;
+        } else if (table === 'sharepoint_tracker_pole') {
+          [stats] = await sql`SELECT COUNT(*) as total, MAX(sync_timestamp) as last_sync, MAX(updated_at) as last_update FROM sharepoint_tracker_pole`;
+        } else if (table === 'sharepoint_tracker_home') {
+          [stats] = await sql`SELECT COUNT(*) as total, MAX(sync_timestamp) as last_sync, MAX(updated_at) as last_update FROM sharepoint_tracker_home`;
+        } else if (table === 'sharepoint_nokia_exp') {
+          [stats] = await sql`SELECT COUNT(*) as total, MAX(sync_timestamp) as last_sync, MAX(updated_at) as last_update FROM sharepoint_nokia_exp`;
+        } else if (table === 'sharepoint_1map_ins') {
+          [stats] = await sql`SELECT COUNT(*) as total, MAX(sync_timestamp) as last_sync, MAX(updated_at) as last_update FROM sharepoint_1map_ins`;
+        } else if (table === 'sharepoint_1map_pole') {
+          [stats] = await sql`SELECT COUNT(*) as total, MAX(sync_timestamp) as last_sync, MAX(updated_at) as last_update FROM sharepoint_1map_pole`;
+        } else if (table === 'sharepoint_lawley_qa') {
+          [stats] = await sql`SELECT COUNT(*) as total, MAX(sync_timestamp) as last_sync, MAX(updated_at) as last_update FROM sharepoint_lawley_qa`;
+        } else if (table === 'sharepoint_mohadin_qa') {
+          [stats] = await sql`SELECT COUNT(*) as total, MAX(sync_timestamp) as last_sync, MAX(updated_at) as last_update FROM sharepoint_mohadin_qa`;
+        } else {
+          throw new Error('Unknown table');
+        }
 
         const total = parseInt(stats.total);
         const lastSync = stats.last_sync ? new Date(stats.last_sync) : null;
