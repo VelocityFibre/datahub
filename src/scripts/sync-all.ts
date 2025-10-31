@@ -14,83 +14,71 @@ import { sql } from '../database/client.js';
 
 /**
  * Master sync script - syncs all available worksheets
+ * MEMORY OPTIMIZED: Processes one sheet at a time to avoid OOM on small VPS
  */
 async function syncAll() {
   const startTime = Date.now();
   const results: any[] = [];
 
   try {
-    console.log('=== VelocityFibre DataHub - Full Sync ===\n');
-    console.log('Fetching Excel file from SharePoint...\n');
+    console.log('=== VelocityFibre DataHub - Full Sync (Memory Optimized) ===\n');
 
-    // Fetch workbook once
-    const workbook = await sharepointClient.getExcelFile(
-      sharepointConfig.lawleyFileUrl
-    );
+    // Helper function to fetch workbook and release memory after each sync
+    const syncWithMemoryManagement = async (
+      connector: any,
+      worksheetName: string,
+      stepNum: number,
+      totalSteps: number
+    ) => {
+      console.log(`📦 ${stepNum}/${totalSteps} - Syncing ${worksheetName}...`);
 
-    console.log(`✅ Downloaded file (${workbook.worksheets.length} worksheets)\n`);
-    console.log('Starting sync for all connectors...\n');
+      // Fetch fresh workbook for this sheet only
+      const workbook = await sharepointClient.getExcelFile(
+        sharepointConfig.lawleyFileUrl
+      );
+
+      const result = await connector.sync(workbook);
+
+      // Help garbage collector release memory
+      workbook.worksheets.forEach((ws: any) => {
+        ws.destroy && ws.destroy();
+      });
+
+      console.log(`✅ ${worksheetName}: ${result.records_processed} records (${result.records_inserted} inserted, ${result.records_updated} updated)`);
+      console.log('');
+
+      return { worksheet: worksheetName, ...result };
+    };
+
+    console.log('Starting memory-optimized sync...\n');
     console.log('='.repeat(80) + '\n');
 
     // 1. HLD_Pole (Foundation - Design Data)
-    console.log('📦 1/9 - Syncing HLD_Pole (Pole Design Data)...');
-    const poleResult = await hldPoleConnectorOptimized.sync(workbook);
-    results.push({ worksheet: 'HLD_Pole', ...poleResult });
-    console.log(`✅ HLD_Pole: ${poleResult.records_processed} records (${poleResult.records_inserted} inserted, ${poleResult.records_updated} updated)`);
-    console.log('');
+    results.push(await syncWithMemoryManagement(hldPoleConnectorOptimized, 'HLD_Pole', 1, 9));
 
     // 2. HLD_Home (Foundation - Home Design Data)
-    console.log('📦 2/9 - Syncing HLD_Home (Home/Premises Design Data)...');
-    const homeResult = await hldHomeConnector.sync(workbook);
-    results.push({ worksheet: 'HLD_Home', ...homeResult });
-    console.log(`✅ HLD_Home: ${homeResult.records_processed} records (${homeResult.records_inserted} inserted, ${homeResult.records_updated} updated)`);
-    console.log('');
+    results.push(await syncWithMemoryManagement(hldHomeConnector, 'HLD_Home', 2, 9));
 
     // 3. Tracker_Pole (Status Updates)
-    console.log('📦 3/9 - Syncing Tracker_Pole (Pole Installation Status)...');
-    const trackerPoleResult = await trackerPoleConnector.sync(workbook);
-    results.push({ worksheet: 'Tracker_Pole', ...trackerPoleResult });
-    console.log(`✅ Tracker_Pole: ${trackerPoleResult.records_processed} records (${trackerPoleResult.records_inserted} inserted, ${trackerPoleResult.records_updated} updated)`);
-    console.log('');
+    results.push(await syncWithMemoryManagement(trackerPoleConnector, 'Tracker_Pole', 3, 9));
 
     // 4. Tracker_Home (Connection Status)
-    console.log('📦 4/9 - Syncing Tracker_Home (Home Connection Status)...');
-    const trackerHomeResult = await trackerHomeConnector.sync(workbook);
-    results.push({ worksheet: 'Tracker_Home', ...trackerHomeResult });
-    console.log(`✅ Tracker_Home: ${trackerHomeResult.records_processed} records (${trackerHomeResult.records_inserted} inserted, ${trackerHomeResult.records_updated} updated)`);
-    console.log('');
+    results.push(await syncWithMemoryManagement(trackerHomeConnector, 'Tracker_Home', 4, 9));
 
     // 5. Nokia_Exp (Activation Data)
-    console.log('📦 5/9 - Syncing Nokia_Exp (ONT Activation Data)...');
-    const nokiaExpResult = await nokiaExpConnector.sync(workbook);
-    results.push({ worksheet: 'Nokia_Exp', ...nokiaExpResult });
-    console.log(`✅ Nokia_Exp: ${nokiaExpResult.records_processed} records (${nokiaExpResult.records_inserted} inserted, ${nokiaExpResult.records_updated} updated)`);
-    console.log('');
+    results.push(await syncWithMemoryManagement(nokiaExpConnector, 'Nokia_Exp', 5, 9));
 
     // 6. 1Map_Ins (OneMap Installation Data)
-    console.log('📦 6/9 - Syncing 1Map_Ins (OneMap Installation Data)...');
-    const oneMapInsResult = await oneMapInsConnector.sync(workbook);
-    results.push({ worksheet: '1Map_Ins', ...oneMapInsResult });
-    console.log(`✅ 1Map_Ins: ${oneMapInsResult.records_processed} records (${oneMapInsResult.records_inserted} inserted, ${oneMapInsResult.records_updated} updated)`);
-    console.log('');
+    results.push(await syncWithMemoryManagement(oneMapInsConnector, '1Map_Ins', 6, 9));
 
     // 7. 1Map_Pole (OneMap Pole Cross-Reference)
-    console.log('📦 7/9 - Syncing 1Map_Pole (OneMap Pole Cross-Reference)...');
-    const oneMapPoleResult = await oneMapPoleConnector.sync(workbook);
-    results.push({ worksheet: '1Map_Pole', ...oneMapPoleResult });
-    console.log(`✅ 1Map_Pole: ${oneMapPoleResult.records_processed} records (${oneMapPoleResult.records_inserted} inserted, ${oneMapPoleResult.records_updated} updated)`);
-    console.log('');
+    results.push(await syncWithMemoryManagement(oneMapPoleConnector, '1Map_Pole', 7, 9));
 
     // 8. Lawley Activations (QA Photo Verification - Ongoing)
-    console.log('📦 8/9 - Syncing Lawley Activations (QA Photo Verification)...');
-    const lawleyActivationsResult = await lawleyActivationsConnector.sync(workbook);
-    results.push({ worksheet: 'Lawley_Activations', ...lawleyActivationsResult });
-    console.log(`✅ Lawley Activations: ${lawleyActivationsResult.records_processed} records (${lawleyActivationsResult.records_inserted} inserted, ${lawleyActivationsResult.records_updated} updated)`);
-    console.log('');
+    results.push(await syncWithMemoryManagement(lawleyActivationsConnector, 'Lawley_Activations', 8, 9));
 
     // 9. Mohadin Activations (QA Photo Verification with Zone/PON - Different File)
     console.log('📦 9/9 - Syncing Mohadin Activations (QA with Zone/PON)...');
-    console.log('Fetching Mohadin Excel file from SharePoint...');
     const mohadinWorkbook = await sharepointClient.getExcelFile(
       sharepointConfig.mohadinFileUrl
     );
@@ -98,6 +86,11 @@ async function syncAll() {
     results.push({ worksheet: 'Mohadin_Activations', ...mohadinActivationsResult });
     console.log(`✅ Mohadin Activations: ${mohadinActivationsResult.records_processed} records (${mohadinActivationsResult.records_inserted} inserted, ${mohadinActivationsResult.records_updated} updated)`);
     console.log('');
+
+    // Release Mohadin workbook memory
+    mohadinWorkbook.worksheets.forEach((ws: any) => {
+      ws.destroy && ws.destroy();
+    });
 
     console.log('='.repeat(80) + '\n');
 
