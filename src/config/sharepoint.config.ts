@@ -9,6 +9,7 @@ export const sharepointConfig = {
   tenantId: process.env.SHAREPOINT_TENANT_ID || '',
   siteUrl: process.env.SHAREPOINT_SITE_URL || 'https://blitzfibre.sharepoint.com/sites/Velocity_Manco',
   lawleyFileUrl: process.env.SHAREPOINT_LAWLEY_FILE_URL || '',
+  mohadinFileUrl: process.env.SHAREPOINT_MOHADIN_FILE_URL || 'https://blitzfibre.sharepoint.com/:x:/s/Velocity_Manco/EYm7g0w6Y1dFgGB_m4YlBxgBeVJpoDXAYjdvK-ZfgHoOqA?e=PaRb5T',
 } as const;
 
 export const validateSharePointConfig = (): void => {

@@ -4,19 +4,16 @@ import { sql } from '../../../database/client.js';
 import { logger } from '../../../utils/logger.js';
 
 /**
- * Lawley QA Worksheet Connector - APPEND-ONLY
- * Syncs QA photo verification data from both Historical and Activations sheets
+ * Mohadin QA Worksheet Connector - APPEND-ONLY
+ * Syncs QA photo verification data from Mohadin Activations sheet
  *
- * Single table approach:
- * - Historical: One-time bulk load (1,515 records before Sept 23, 2025)
- * - Activations: Recurring sync (359+ records after Sept 23, 2025)
- * - Append-only: Never updates, only inserts NEW records
+ * This connector handles the Mohadin file which has Zone (col C) and PON (col D)
  */
-export class LawleyQAConnector extends BaseWorksheetConnector {
-  private source: 'historical' | 'activations';
+export class MohadinQAConnector extends BaseWorksheetConnector {
+  private source: 'mohadin_historical' | 'mohadin_activations';
 
-  constructor(worksheetName: string, source: 'historical' | 'activations') {
-    super(worksheetName, 'sharepoint_lawley_qa');
+  constructor(worksheetName: string, source: 'mohadin_historical' | 'mohadin_activations') {
+    super(worksheetName, 'sharepoint_mohadin_qa');
     this.source = source;
   }
 
@@ -60,7 +57,7 @@ export class LawleyQAConnector extends BaseWorksheetConnector {
     // Get existing drop numbers to avoid duplicates
     const dropNumbers = data.map(d => d.drop_number);
     const existingRecords = await sql`
-      SELECT drop_number FROM sharepoint_lawley_qa
+      SELECT drop_number FROM sharepoint_mohadin_qa
       WHERE drop_number = ANY(${dropNumbers})
     `;
 
@@ -83,7 +80,7 @@ export class LawleyQAConnector extends BaseWorksheetConnector {
 
       const insertPromises = batch.map(record =>
         sql`
-          INSERT INTO sharepoint_lawley_qa (
+          INSERT INTO sharepoint_mohadin_qa (
             date, drop_number, source,
             zone_no, pon_no,
             step_1_property_frontage,
@@ -109,20 +106,20 @@ export class LawleyQAConnector extends BaseWorksheetConnector {
             ${record.date || null},
             ${record.drop_number},
             ${record._source},
-            ${record.zone_no || null},
-            ${record.pon_no || null},
-            ${record.step_1_property_frontage_house_street_number_visible || null},
+            ${record.zone || null},
+            ${record.pon || null},
+            ${record.step_1_property_frontage_house_street_number_visible || record.step_1_property_frontage || null},
             ${record.step_2_location_on_wall_before_install || null},
             ${record.step_3_outside_cable_span_pole_pigtail_screw || null},
             ${record.step_4_home_entry_point_outside || null},
             ${record.step_5_home_entry_point_inside || null},
             ${record.step_6_fibre_entry_to_ont_after_install || null},
             ${record.step_7_overall_work_area_after_completion || null},
-            ${record.step_8_ont_barcode_scan_barcode_photo_of_label || null},
-            ${record.step_9_mini_ups_serial_number_gizzu || null},
-            ${record.step_10_powermeter_at_ont_before_activation || null},
+            ${record.step_8_ont_barcode_scan_barcode_photo_of_label || record.step_7_ont_barcode_scan_barcode_photo_of_label || null},
+            ${record.step_9_mini_ups_serial_number_gizzu || record.step_8_mini_ups_serial_number_gizzu || null},
+            ${record.step_10_powermeter_at_ont_before_activation || record.step_9_powermeter_at_ont_before_activation || null},
             ${record.step_11_active_broadband_light || null},
-            ${record.step_12_customer_signature || null},
+            ${record.step_12_customer_signature || record.step_10_customer_signature || null},
             ${record.completed_photos || null},
             ${record.x_outstanding_photos || null},
             ${record.user || null},
@@ -153,57 +150,24 @@ export class LawleyQAConnector extends BaseWorksheetConnector {
 }
 
 // Export instances
-export const lawleyHistoricalConnector = new LawleyQAConnector('Lawley Historical', 'historical');
-export const lawleyActivationsConnector = new LawleyQAConnector('Lawley Activations', 'activations');
+export const mohadinHistoricalConnector = new MohadinQAConnector('Mohadin Historical', 'mohadin_historical');
+export const mohadinActivationsConnector = new MohadinQAConnector('Mohadin Activations', 'mohadin_activations');
 
-// Standalone execution for Historical (one-time)
-if (import.meta.url === `file://${process.argv[1]}` && process.argv[2] === 'historical') {
+// Standalone execution for Mohadin Activations
+if (import.meta.url === `file://${process.argv[1]}`) {
   (async () => {
     try {
-      console.log('=== Lawley Historical QA - One-Time Bulk Load ===\n');
+      console.log('=== Mohadin Activations QA - Recurring Sync ===\n');
 
       const { sharepointClient } = await import('../client.js');
       const { sharepointConfig } = await import('../../../config/sharepoint.config.js');
       const { sql } = await import('../../../database/client.js');
 
-      console.log('Fetching workbook from SharePoint...');
-      const workbook = await sharepointClient.getExcelFile(sharepointConfig.lawleyFileUrl);
+      console.log('Fetching Mohadin workbook from SharePoint...');
+      const workbook = await sharepointClient.getExcelFile(sharepointConfig.mohadinFileUrl);
 
       const startTime = Date.now();
-      const result = await lawleyHistoricalConnector.sync(workbook);
-      const duration = Date.now() - startTime;
-
-      console.log('\n=== Sync Result ===');
-      console.log(JSON.stringify(result, null, 2));
-      console.log(`\nTotal time: ${(duration / 1000).toFixed(1)}s`);
-
-      const count = await sql`SELECT COUNT(*) as count FROM sharepoint_lawley_qa WHERE source = 'historical'`;
-      console.log(`\n✅ Historical QA records in database: ${count[0].count}`);
-
-      console.log('\n=== ✅ Lawley Historical Bulk Load Complete! ===\n');
-      process.exit(0);
-    } catch (error: any) {
-      console.error('\n❌ Sync failed:', error.message);
-      process.exit(1);
-    }
-  })();
-}
-
-// Standalone execution for Activations (recurring)
-if (import.meta.url === `file://${process.argv[1]}` && process.argv[2] === 'activations') {
-  (async () => {
-    try {
-      console.log('=== Lawley Activations QA - Recurring Sync ===\n');
-
-      const { sharepointClient } = await import('../client.js');
-      const { sharepointConfig } = await import('../../../config/sharepoint.config.js');
-      const { sql } = await import('../../../database/client.js');
-
-      console.log('Fetching workbook from SharePoint...');
-      const workbook = await sharepointClient.getExcelFile(sharepointConfig.lawleyFileUrl);
-
-      const startTime = Date.now();
-      const result = await lawleyActivationsConnector.sync(workbook);
+      const result = await mohadinActivationsConnector.sync(workbook);
       const duration = Date.now() - startTime;
 
       console.log('\n=== Sync Result ===');
@@ -213,24 +177,25 @@ if (import.meta.url === `file://${process.argv[1]}` && process.argv[2] === 'acti
       const counts = await sql`
         SELECT
           source,
-          COUNT(*) as count
-        FROM sharepoint_lawley_qa
+          COUNT(*) as count,
+          COUNT(zone_no) as with_zone,
+          COUNT(pon_no) as with_pon
+        FROM sharepoint_mohadin_qa
         GROUP BY source
         ORDER BY source
       `;
 
       console.log('\n=== Database Status ===');
-      counts.forEach((c: any) => {
-        console.log(`${c.source}: ${c.count} records`);
-      });
+      console.table(counts);
 
-      const total = await sql`SELECT COUNT(*) as count FROM sharepoint_lawley_qa`;
-      console.log(`Total: ${total[0].count} records`);
+      const total = await sql`SELECT COUNT(*) as count FROM sharepoint_mohadin_qa`;
+      console.log(`\nTotal: ${total[0].count} records`);
 
-      console.log('\n=== ✅ Lawley Activations Sync Complete! ===\n');
+      console.log('\n=== ✅ Mohadin Activations Sync Complete! ===\n');
       process.exit(0);
     } catch (error: any) {
       console.error('\n❌ Sync failed:', error.message);
+      console.error(error.stack);
       process.exit(1);
     }
   })();

@@ -233,6 +233,168 @@ Create API endpoints for Power BI to consume the data.
 
 Set up cron jobs or scheduled tasks to sync data automatically.
 
+## Automated Syncing
+
+### Cron Job Setup
+
+The DataHub includes automatic syncing via cron jobs that run **every 6 hours** (00:00, 06:00, 12:00, 18:00).
+
+**Install cron job:**
+```bash
+./setup-cron.sh
+```
+
+**Check cron status:**
+```bash
+crontab -l
+```
+
+**View sync logs:**
+```bash
+tail -f logs/cron-sync.log
+```
+
+### Synced Worksheets
+
+The automated sync (`npm run sync`) includes all 9 worksheets:
+
+| # | Worksheet | Description | Table |
+|---|-----------|-------------|-------|
+| 1 | HLD_Pole | Pole design data | `sow_poles` |
+| 2 | HLD_Home | Home/premises design | `sow_drops` |
+| 3 | Tracker_Pole | Pole installation status | `sharepoint_tracker_pole` |
+| 4 | Tracker_Home | Home connection status | `sharepoint_tracker_home` |
+| 5 | Nokia_Exp | ONT activation data | `sharepoint_nokia_exp` |
+| 6 | 1Map_Ins | OneMap installation data | `sharepoint_1map_ins` |
+| 7 | 1Map_Pole | OneMap pole cross-reference | `sharepoint_1map_pole` |
+| 8 | **Lawley Activations** | **QA photo verification** | `sharepoint_lawley_qa` |
+| 9 | **Mohadin Activations** | **QA with Zone/PON** | `sharepoint_lawley_qa` |
+
+### Manual Sync Commands
+
+**Full sync (all 9 worksheets):**
+```bash
+npm run sync
+```
+
+**Individual worksheet syncs:**
+```bash
+npm run sync:hld-pole            # Pole design data
+npm run sync:hld-home            # Home design data
+npm run sync:tracker-pole        # Pole installation status
+npm run sync:tracker-home        # Home connection status
+npm run sync:nokia-exp           # ONT activation data
+npm run sync:1map-ins            # OneMap installation data
+npm run sync:1map-pole           # OneMap pole cross-reference
+npm run sync:lawley-activations  # QA photo verification (recurring)
+npm run sync:lawley-historical   # QA historical bulk load (one-time)
+npm run sync:mohadin-activations # Mohadin QA with Zone/PON (recurring)
+```
+
+### Lawley QA Photo Verification
+
+The Lawley QA sync tracks photo verification for 12-step quality assurance:
+
+**Database:** `sharepoint_lawley_qa`
+
+**Current Status:**
+- Historical records: 1,514 (pre-Sept 23, 2025)
+- Activations records: 354 (post-Sept 23, 2025)
+- Total unique drops: 1,868
+
+**Note:** The `lawley-historical` sync is a one-time bulk load. Only `lawley-activations` runs on the automated schedule.
+
+## Schema Change Management
+
+### When SharePoint Columns Change
+
+The DataHub automatically captures **ALL** columns from SharePoint in the `raw_data` JSONB field, even if not mapped to typed database columns. This means:
+
+✅ **New columns are safe** - Already stored in raw_data
+✅ **Syncs won't break** - No code changes needed
+✅ **Data is queryable** - Use JSON operators: `raw_data->>'column_name'`
+
+### Monthly Schema Check
+
+Run this command **monthly** to detect new unmapped columns:
+
+```bash
+npm run detect:schema-changes
+```
+
+This shows:
+- Total columns per worksheet
+- Which columns have typed database fields
+- Which columns are new/unmapped (but still in raw_data)
+
+**Action:** Only promote columns to typed fields if they're frequently filtered/joined.
+
+### Adding New Typed Columns
+
+When SharePoint adds important columns (like zone_no, pon_no), follow these steps:
+
+#### 1. Run Migration
+
+```bash
+npm run migrate
+```
+
+This applies all pending migrations in `src/database/migrations/`.
+
+#### 2. Sync New Data
+
+```bash
+# For Lawley Activations
+npm run sync:lawley-activations
+
+# Or run full sync
+npm run sync
+```
+
+#### 3. Verify Columns Populated
+
+```sql
+-- Connect to database
+psql "$DATABASE_URL"
+
+-- Check new columns
+SELECT zone_no, pon_no, drop_number
+FROM sharepoint_lawley_qa
+WHERE zone_no IS NOT NULL
+LIMIT 10;
+```
+
+### Creating New Migrations
+
+When promoting a column from raw_data to typed field:
+
+1. **Create migration file**: `src/database/migrations/00X_description.sql`
+   ```sql
+   ALTER TABLE sharepoint_lawley_qa
+   ADD COLUMN IF NOT EXISTS new_column INTEGER;
+
+   CREATE INDEX IF NOT EXISTS idx_table_column
+   ON sharepoint_lawley_qa(new_column);
+   ```
+
+2. **Update connector**: Add to INSERT statement in connector file
+   ```typescript
+   // src/connectors/sharepoint/worksheets/lawley-qa.connector.ts
+   INSERT INTO sharepoint_lawley_qa (
+     zone_no, pon_no, new_column,  // Add here
+     ...
+   ) VALUES (
+     ${record.zone_no || null},
+     ${record.pon_no || null},
+     ${record.new_column || null},  // Add here
+     ...
+   )
+   ```
+
+3. **Run migration and sync** (steps above)
+
+See `SCHEMA_CHANGE_STRATEGY.md` for detailed guidelines.
+
 ## API Development (Next Phase)
 
 Power BI endpoints will be created at:

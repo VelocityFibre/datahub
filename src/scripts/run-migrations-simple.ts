@@ -283,7 +283,7 @@ async function runMigrations() {
         step_10_powermeter_before_activation BOOLEAN,
         step_11_active_broadband_light BOOLEAN,
         step_12_customer_signature BOOLEAN,
-        completed_photos BOOLEAN,
+        completed_photos TEXT,
         outstanding_photos TEXT,
         user_name VARCHAR(255),
         outstanding_photos_loaded_1map BOOLEAN,

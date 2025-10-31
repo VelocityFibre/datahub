@@ -58,110 +58,116 @@ export class OneMapInsConnector extends BaseWorksheetConnector {
 
     logger.info(`Found ${existingIds.size} existing, ${newRecords.length} new`);
 
-    // Batch insert new records
+    // Batch insert new records - OPTIMIZED for large wide tables (223 columns)
     if (newRecords.length > 0) {
       logger.info(`Inserting ${newRecords.length} new 1Map installations...`);
-      const batchSize = 100;
+      const batchSize = 25; // Reduced from 100 - very wide table
 
       for (let i = 0; i < newRecords.length; i += batchSize) {
         const batch = newRecords.slice(i, i + batchSize);
 
-        const insertPromises = batch.map(record =>
-          sql`
-            INSERT INTO sharepoint_1map_ins (
-              property_id, onemap_nad_id, job_id,
-              status, flow_name_groups, site,
-              sections, pons, location_address,
-              actual_device_location_latitude,
-              actual_device_location_longitude,
-              lst_mod_by, lst_mod_dt, date_status_changed,
-              pole_number, drop_number,
-              language, survey_date,
-              project_id, raw_data, sync_timestamp
-            ) VALUES (
-              ${record.property_id || null},
-              ${record._1map_nad_id || null},
-              ${record.job_id || null},
-              ${record.status || null},
-              ${record.flow_name_groups || null},
-              ${record.site || null},
-              ${record.sections || null},
-              ${record.pons || null},
-              ${record.location_address || null},
-              ${record.actual_device_location_latitude || null},
-              ${record.actual_device_location_longitude || null},
-              ${record.lst_mod_by || null},
-              ${record.lst_mod_dt || null},
-              ${record.date_status_changed || null},
-              ${record.pole_number || null},
-              ${record.drop_number || null},
-              ${record.language || null},
-              ${record.survey_date || null},
-              ${projectId || null},
-              ${JSON.stringify(record)},
-              NOW()
-            )
-          `.catch(err => {
+        // Process sequentially to avoid memory issues with large JSONB
+        for (const record of batch) {
+          try {
+            await sql`
+              INSERT INTO sharepoint_1map_ins (
+                property_id, onemap_nad_id, job_id,
+                status, flow_name_groups, site,
+                sections, pons, location_address,
+                actual_device_location_latitude,
+                actual_device_location_longitude,
+                lst_mod_by, lst_mod_dt, date_status_changed,
+                pole_number, drop_number,
+                language, survey_date,
+                project_id, raw_data, sync_timestamp
+              ) VALUES (
+                ${record.property_id || null},
+                ${record._1map_nad_id || null},
+                ${record.job_id || null},
+                ${record.status || null},
+                ${record.flow_name_groups || null},
+                ${record.site || null},
+                ${record.sections || null},
+                ${record.pons || null},
+                ${record.location_address || null},
+                ${record.actual_device_location_latitude || null},
+                ${record.actual_device_location_longitude || null},
+                ${record.lst_mod_by || null},
+                ${record.lst_mod_dt || null},
+                ${record.date_status_changed || null},
+                ${record.pole_number || null},
+                ${record.drop_number || null},
+                ${record.language || null},
+                ${record.survey_date || null},
+                ${projectId || null},
+                ${JSON.stringify(record)},
+                NOW()
+              )
+            `;
+            inserted++;
+          } catch (err: any) {
             logger.error(`Failed to insert 1Map record ${record.property_id}`, { error: err.message });
-            return null;
-          })
-        );
+          }
+        }
 
-        const results = await Promise.all(insertPromises);
-        inserted += results.filter(r => r !== null).length;
-
-        if ((i + batchSize) % 1000 === 0 || (i + batchSize) >= newRecords.length) {
+        // Report progress every 1000 records
+        if (inserted % 1000 === 0 || inserted >= newRecords.length) {
           logger.info(`Progress: ${inserted} / ${newRecords.length} inserted`);
         }
       }
+
+      logger.info(`Insert complete: ${inserted} new records added`);
     }
 
-    // Batch update existing records
+    // Batch update existing records - OPTIMIZED
     if (updateRecords.length > 0) {
       logger.info(`Updating ${updateRecords.length} existing 1Map installations...`);
-      const updateBatchSize = 50;
+      const updateBatchSize = 25; // Reduced for wide table
 
       for (let i = 0; i < updateRecords.length; i += updateBatchSize) {
         const batch = updateRecords.slice(i, i + updateBatchSize);
 
-        const updatePromises = batch.map(record =>
-          sql`
-            UPDATE sharepoint_1map_ins
-            SET
-              onemap_nad_id = ${record._1map_nad_id || null},
-              job_id = ${record.job_id || null},
-              status = ${record.status || null},
-              flow_name_groups = ${record.flow_name_groups || null},
-              site = ${record.site || null},
-              sections = ${record.sections || null},
-              pons = ${record.pons || null},
-              location_address = ${record.location_address || null},
-              actual_device_location_latitude = ${record.actual_device_location_latitude || null},
-              actual_device_location_longitude = ${record.actual_device_location_longitude || null},
-              lst_mod_by = ${record.lst_mod_by || null},
-              lst_mod_dt = ${record.lst_mod_dt || null},
-              date_status_changed = ${record.date_status_changed || null},
-              pole_number = ${record.pole_number || null},
-              drop_number = ${record.drop_number || null},
-              language = ${record.language || null},
-              survey_date = ${record.survey_date || null},
-              raw_data = ${JSON.stringify(record)},
-              sync_timestamp = NOW(),
-              updated_at = NOW()
-            WHERE property_id = ${record.property_id}
-          `.catch(err => {
+        // Process updates sequentially for stability
+        for (const record of batch) {
+          try {
+            await sql`
+              UPDATE sharepoint_1map_ins
+              SET
+                onemap_nad_id = ${record._1map_nad_id || null},
+                job_id = ${record.job_id || null},
+                status = ${record.status || null},
+                flow_name_groups = ${record.flow_name_groups || null},
+                site = ${record.site || null},
+                sections = ${record.sections || null},
+                pons = ${record.pons || null},
+                location_address = ${record.location_address || null},
+                actual_device_location_latitude = ${record.actual_device_location_latitude || null},
+                actual_device_location_longitude = ${record.actual_device_location_longitude || null},
+                lst_mod_by = ${record.lst_mod_by || null},
+                lst_mod_dt = ${record.lst_mod_dt || null},
+                date_status_changed = ${record.date_status_changed || null},
+                pole_number = ${record.pole_number || null},
+                drop_number = ${record.drop_number || null},
+                language = ${record.language || null},
+                survey_date = ${record.survey_date || null},
+                raw_data = ${JSON.stringify(record)},
+                sync_timestamp = NOW(),
+                updated_at = NOW()
+              WHERE property_id = ${record.property_id}
+            `;
+            updated++;
+          } catch (err: any) {
             logger.error(`Failed to update 1Map record ${record.property_id}`, { error: err.message });
-            return null;
-          })
-        );
+          }
+        }
 
-        const results = await Promise.all(updatePromises);
-        updated += results.filter(r => r !== null).length;
-
-        if ((i + updateBatchSize) % 500 === 0 || (i + updateBatchSize) >= updateRecords.length) {
+        // Report progress every 500 records
+        if (updated % 500 === 0 || updated >= updateRecords.length) {
           logger.info(`Update progress: ${updated} / ${updateRecords.length}`);
         }
       }
+
+      logger.info(`Update complete: ${updated} records updated`);
     }
 
     logger.info(`Upsert complete: ${inserted} inserted, ${updated} updated`);

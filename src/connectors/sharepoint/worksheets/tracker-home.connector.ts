@@ -87,56 +87,59 @@ export class TrackerHomeConnector extends BaseWorksheetConnector {
 
     logger.info(`Found ${existingLabels.size} existing, ${newHomes.length} new`);
 
-    // Batch insert new records
+    // Batch insert new records - OPTIMIZED for large datasets
     if (newHomes.length > 0) {
       logger.info(`Inserting ${newHomes.length} new home trackers...`);
-      const batchSize = 100;
+      const batchSize = 50; // Reduced from 100 for memory efficiency
 
       for (let i = 0; i < newHomes.length; i += batchSize) {
         const batch = newHomes.slice(i, i + batchSize);
 
-        const insertPromises = batch.map(home =>
-          sql`
-            INSERT INTO sharepoint_tracker_home (
-              label, pon_no, zone_no,
-              home_sign_up_date, home_all_dates, home_drop_date,
-              home_install_complete_date, home_connected_date,
-              drop_install_status,
-              hld_pon, ops_pon, pon_optical_status,
-              project_id, raw_data, sync_timestamp
-            ) VALUES (
-              ${home.label},
-              ${home.pon_no || null},
-              ${home.zone_no || null},
-              ${home.home_sign_up_date || null},
-              ${home.home_all_dates || null},
-              ${home.home_drop_date || null},
-              ${home.home_install_complete_date || null},
-              ${home.home_connected_date || null},
-              ${home.drop_install || null},
-              ${home.hld_pon || null},
-              ${home.ops_pon || null},
-              ${home.pon_optical_status || null},
-              ${projectId || null},
-              ${JSON.stringify(home)},
-              NOW()
-            )
-          `.catch(err => {
+        // Process batch sequentially to avoid memory issues
+        for (const home of batch) {
+          try {
+            await sql`
+              INSERT INTO sharepoint_tracker_home (
+                label, pon_no, zone_no,
+                home_sign_up_date, home_all_dates, home_drop_date,
+                home_install_complete_date, home_connected_date,
+                drop_install_status,
+                hld_pon, ops_pon, pon_optical_status,
+                project_id, raw_data, sync_timestamp
+              ) VALUES (
+                ${home.label},
+                ${home.pon_no || null},
+                ${home.zone_no || null},
+                ${home.home_sign_up_date || null},
+                ${home.home_all_dates || null},
+                ${home.home_drop_date || null},
+                ${home.home_install_complete_date || null},
+                ${home.home_connected_date || null},
+                ${home.drop_install || null},
+                ${home.hld_pon || null},
+                ${home.ops_pon || null},
+                ${home.pon_optical_status || null},
+                ${projectId || null},
+                ${JSON.stringify(home)},
+                NOW()
+              )
+            `;
+            inserted++;
+          } catch (err: any) {
             logger.error(`Failed to insert home tracker ${home.label}`, { error: err.message });
-            return null;
-          })
-        );
+          }
+        }
 
-        const results = await Promise.all(insertPromises);
-        inserted += results.filter(r => r !== null).length;
-
-        if ((i + batchSize) % 500 === 0 || (i + batchSize) >= newHomes.length) {
+        // Report progress every 500 records
+        if (inserted % 500 === 0 || inserted >= newHomes.length) {
           logger.info(`Progress: ${inserted} / ${newHomes.length} inserted`);
         }
       }
+
+      logger.info(`Insert complete: ${inserted} new records added`);
     }
 
-    // Batch update existing records
+    // Batch update existing records - OPTIMIZED
     if (updateHomes.length > 0) {
       logger.info(`Updating ${updateHomes.length} existing home trackers...`);
       const updateBatchSize = 50;
@@ -144,38 +147,41 @@ export class TrackerHomeConnector extends BaseWorksheetConnector {
       for (let i = 0; i < updateHomes.length; i += updateBatchSize) {
         const batch = updateHomes.slice(i, i + updateBatchSize);
 
-        const updatePromises = batch.map(home =>
-          sql`
-            UPDATE sharepoint_tracker_home
-            SET
-              pon_no = ${home.pon_no || null},
-              zone_no = ${home.zone_no || null},
-              home_sign_up_date = ${home.home_sign_up_date || null},
-              home_all_dates = ${home.home_all_dates || null},
-              home_drop_date = ${home.home_drop_date || null},
-              home_install_complete_date = ${home.home_install_complete_date || null},
-              home_connected_date = ${home.home_connected_date || null},
-              drop_install_status = ${home.drop_install || null},
-              hld_pon = ${home.hld_pon || null},
-              ops_pon = ${home.ops_pon || null},
-              pon_optical_status = ${home.pon_optical_status || null},
-              raw_data = ${JSON.stringify(home)},
-              sync_timestamp = NOW(),
-              updated_at = NOW()
-            WHERE label = ${home.label}
-          `.catch(err => {
+        // Process updates sequentially for stability
+        for (const home of batch) {
+          try {
+            await sql`
+              UPDATE sharepoint_tracker_home
+              SET
+                pon_no = ${home.pon_no || null},
+                zone_no = ${home.zone_no || null},
+                home_sign_up_date = ${home.home_sign_up_date || null},
+                home_all_dates = ${home.home_all_dates || null},
+                home_drop_date = ${home.home_drop_date || null},
+                home_install_complete_date = ${home.home_install_complete_date || null},
+                home_connected_date = ${home.home_connected_date || null},
+                drop_install_status = ${home.drop_install || null},
+                hld_pon = ${home.hld_pon || null},
+                ops_pon = ${home.ops_pon || null},
+                pon_optical_status = ${home.pon_optical_status || null},
+                raw_data = ${JSON.stringify(home)},
+                sync_timestamp = NOW(),
+                updated_at = NOW()
+              WHERE label = ${home.label}
+            `;
+            updated++;
+          } catch (err: any) {
             logger.error(`Failed to update home tracker ${home.label}`, { error: err.message });
-            return null;
-          })
-        );
+          }
+        }
 
-        const results = await Promise.all(updatePromises);
-        updated += results.filter(r => r !== null).length;
-
-        if ((i + updateBatchSize) % 500 === 0 || (i + updateBatchSize) >= updateHomes.length) {
+        // Report progress every 500 records
+        if (updated % 500 === 0 || updated >= updateHomes.length) {
           logger.info(`Update progress: ${updated} / ${updateHomes.length}`);
         }
       }
+
+      logger.info(`Update complete: ${updated} records updated`);
     }
 
     logger.info(`Upsert complete: ${inserted} inserted, ${updated} updated`);
